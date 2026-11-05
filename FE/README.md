@@ -1,100 +1,54 @@
-# Frontend (FE) — Web UI Contract, UX & Error Handling
+# FE — Tài liệu thiết kế giao diện và tích hợp
 
-> **Trạng thái:** Thiết kế giao diện đề xuất, không có mã nguồn Next.js đính kèm. Kế hoạch [P] dự kiến React/Next.js và Flutter cho Participant; xác nhận MVP Web/mobile theo D-01.
+> **ID:** FE-00 · **Ngày:** 05/11/2026 · **Trạng thái: DRAFT / REVIEW REQUIRED**.
+> **Chủ trì:** Hoàng Duy Khánh; Nguyễn Khánh Hiền; Lê Minh Khang · **Review:** Bùi Đức Hưng và owner nghiệp vụ liên quan.
+> [G]: đề tài; [P]: kế hoạch; [D]: thiết kế đề xuất; TBD: chưa quyết định. Các route/component/states dưới đây là [D], chưa phải ứng dụng đã chạy.
 
-## 1. Mục tiêu FE theo vai trò
+**Frontend (FE)** là giao diện người dùng: màn hình, biểu mẫu, điều hướng, hiển thị dữ liệu và gọi API. Thư mục hiện chứa tài liệu, chưa có source ứng dụng chạy được.
 
-| Role | Màn hình tối thiểu | Điều kiện hiển thị | FR |
-|---|---|---|---|
-| Participant | Login, Contest List, Enrollment, Roll, Frame, Upload, My Submission, My Result | Có token; phần public tùy page | FR-01/04/05/06/17 |
-| Organizer | Contest Setup, Registration Review, Submission Review Queue, Judge Assignment, Results Publish | Scope contest được giao | FR-03/04/08/09/11 |
-| Judge | My Assignments, Submission Detail, Criteria Scoring, Finalize | Assigned Judge only | FR-09/10 |
-| Admin | User/Role, Master Data, Audit/Dashboard | Role Admin | FR-02 |
-| Public | Contest listing/Results/Archive | Chỉ công khai sau publish | FR-11/12 |
+## 1. Mục lục file
 
-## 2. Cấu trúc route đề xuất (không có code chạy trong zip)
-
-```text
-FE/
-├── README.md
-└── src/app/
-    ├── (public)/contests
-    ├── (public)/archive
-    ├── (auth)/login
-    ├── participant/film-rolls
-    ├── participant/submissions/new
-    ├── participant/submissions/[id]
-    ├── organizer/contests
-    ├── organizer/review-queue
-    ├── organizer/judge-assignments
-    ├── organizer/results
-    ├── judge/assignments
-    ├── judge/scores/[id]
-    └── admin/users
-```
-
-## 3. UX state của mọi form, phải có cả happy/unhappy
-
-| State | FE cần hiển thị | API/trạng thái liên quan |
+| File | Nội dung | Jira |
 |---|---|---|
-| Loading | Spinner/disable nút chống double submit | Request đang chạy |
-| Empty | Không có cuộc thi/bài/điểm; CTA hợp lệ | 200 empty list |
-| Validation error | Gắn lỗi đúng field và giữ dữ liệu nhập | 422 field errors |
-| Authentication error | Yêu cầu login, không lộ dữ liệu nhạy cảm | 401 |
-| Forbidden | 403 + dẫn về trang phù hợp | 403 |
-| Conflict | “Dữ liệu đã thay đổi, tải lại”, tránh ghi đè | 409 |
-| External service failure | Cho retry phù hợp, phân biệt lỗi AI/cloud với bài không hợp lệ | 5xx, timeout |
-| Success | Hiển thị mã ID, trạng thái, bước tiếp theo | 200/201 |
+| [01 — Kiến trúc và từng file](01-architecture-and-files.md) | App shell, route, feature, API client, form/state/test | GC-46, GC-52 |
+| [02 — Danh mục màn hình](02-screen-catalogue.md) | Mã màn hình, vai trò, route, input/output, FR/API | GC-40..42, GC-52 |
+| [03 — Luồng Participant](03-participant-flow.md) | Hồ sơ/portfolio, đăng ký, roll/frame, nộp ảnh, kết quả | GC-49, GC-57, GC-72 |
+| [04 — Luồng quản lý](04-management-flow.md) | Organizer, Judge, Admin, công bố/triển lãm/report | GC-48, GC-50, GC-58, GC-60, GC-73 |
+| [05 — API và trạng thái UI](05-api-and-ui-states.md) | Session, request, lỗi, retry, cache và bảo mật | GC-53, GC-65 |
+| [06 — Kiểm thử và vận hành](06-testing-and-operation.md) | Test UI/E2E, setup có điều kiện và bằng chứng | GC-66, GC-71..73 |
 
-## 4. Detailed UI journey — Participant upload
+Đọc [API contract chung](../BE/02-api-contract.md) trước khi viết request. A01..A60 là mã nhóm endpoint thiết kế, chưa phải API triển khai.
 
-1. Vào Contest đã công bố → đọc rule/time/date. Nếu đóng, không hiện nút nộp (BE vẫn là nguồn chặn cuối).
-2. Đăng ký, xem Enrollment APPROVED nếu policy yêu cầu.
-3. Tạo FilmRoll và FilmFrame; form có film stock, ISO, camera, lens, frame number, lab và scan metadata theo quy chế.
-4. Màn hình nộp: chọn frame + ảnh. Hiện accepted formats/size **từ cấu hình**, không tự ghi 20 MB như sự thật.
-5. Upload có progress; khi storage fail phải giữ form và cho retry an toàn.
-6. Khi bấm Gửi, BE xác minh deadline và resource ownership lần cuối; thành công trả Submission ID + status.
-7. Khi hệ thống yêu cầu sửa, hiển thị lý do và chỉ mở thao tác được phép theo BR.
+## 2. Phạm vi theo vai trò
 
-## 5. Detailed UI journey — Organizer/Judge
+| Vai trò | Trách nhiệm giao diện |
+|---|---|
+| Participant | Profile/portfolio, cuộc thi/đăng ký, phim/khung hình, nộp bài, trạng thái/kết quả/feedback |
+| Organizer | Cấu hình/mẫu cuộc thi, đăng ký/duyệt bài, cảnh báo AI, phân công, quản lý chấm, công bố/giải thưởng/triển lãm/report |
+| Judge | Assignment, xem tác phẩm theo quyền, chấm nhiều vòng/tiêu chí, nhận xét và chốt |
+| Admin | Người dùng/quyền, danh mục, cấu hình chung và giám sát |
 
-- Organizer tạo contest → category/criteria → publish → xem hàng đợi validation/AI flags → accept/reject/revision (lý do nếu reject) → gán Judge.
-- Judge chỉ thấy bài được gán, nhập điểm theo criterion (range từ BE), lưu nháp, chốt; khi đã chốt không tự mở lại.
-- Organizer kiểm chưa thiếu phiếu/tie-break → duyệt bảng xếp hạng → publish. Chưa publish thì FE public tuyệt đối không gọi API điểm nháp.
+Trang xem công khai chỉ hiển thị dữ liệu đã được cấp quyền công bố; không mặc định có role đăng ký Public.
 
-## 6. API & contract policy
+## 3. Công nghệ và những quyết định chưa chốt
 
-- Central API client xử lý HTTP error theo mã thống nhất từ BE, không parse message text tự do.
-- Dùng mock đúng OpenAPI khi BE chưa xong; thay mock bằng API thật và test integration.
-- Ẩn nút theo role chỉ cải thiện UX, **bắt buộc BE kiểm quyền**.
-- Không để JWT secret, cloud admin credentials, API Key vào bundle FE.
-- Form file upload xử lý timeout và retry; không coi tiến trình upload 100% là Submission được nộp nếu finalize chưa xác nhận.
+React/Next.js và Flutter là đề xuất trong tài liệu, không phải quyết định đã chốt. D-01 xác định phải có cả Web/Mobile hay được chọn; Web responsive không tự thay yêu cầu ứng dụng di động. Cấu trúc file 01 trung lập framework; tên .tsx nếu dùng sau này chỉ áp dụng sau chọn stack.
 
-## 7. Responsive / Accessibility
+Session transport, quyền xem thông tin giám khảo/thí sinh, quyền sửa bài/điểm, formula/tie-break, limits ảnh, visibility portfolio và kênh thông báo đều chưa được tự đặt.
 
-- Participant dùng được trên viewport điện thoại; bàn phím focus cho form, thông báo lỗi gắn label.
-- Trạng thái có text rõ, không chỉ màu; alt cho ảnh công khai.
-- Với ảnh private, không dùng `<img>` truy object bucket public trái chính sách.
+## 4. Nguyên tắc UI
 
-## 8. README cần TV3/TV4 bổ sung khi có source
+- BE là nơi kiểm quyền/điều kiện cuối; ẩn nút không bảo vệ API.
+- Upload 100% chỉ là truyền tệp xong; phải có xác nhận gửi bài từ BE.
+- Lấy thể lệ/giới hạn/tiêu chí từ cấu hình; không viết cứng 10MB, số ảnh, deadline hoặc công thức.
+- Hiển thị đầy đủ loading/empty/error/conflict/success; giữ dữ liệu nhập khi lỗi có thể khôi phục.
+- AI cảnh báo là tín hiệu hỗ trợ, không ghi chắc “ảnh giả” hay tự loại.
+- Không đưa provider key, JWT signing key hoặc cloud credential vào frontend.
 
-`Node version`, package manager, lệnh install/dev/build/test, env sample (`NEXT_PUBLIC_API_BASE_URL`), route guards, screenshot 4 role, vị trí component, test run evidence, known issues.
+## 5. Nguồn và nghiệm thu thiết kế
 
-[FR Index](../Docs/02-requirements/README.md) · [BE API Contract](../BE/README.md) · [E2E Tests](../Docs/05-quality/e2e-test-cases.md)
+[FR Index](../Docs/02-requirements/README.md), [Decision Log](../Docs/01-governance/open-questions.md), [Entity](../Docs/03-domain/entities.md), [State](../Docs/03-domain/state-transitions.md), [E2E cases](../Docs/05-quality/e2e-test-cases.md).
 
-## V3 — Frontend business states / interaction failures (đề xuất)
-
-| Màn hình | Tình huống bất thường | UX bắt buộc |
-|---|---|---|
-| Submission | Upload xong nhưng quá hạn finalize | Không báo nộp thành công; hiện `CONTEST_CLOSED` và hướng dẫn |
-| Submission | Request timeout sau finalize | Không tự xóa form và không tự gửi request key mới; đọc lại trạng thái trước |
-| Review | Organizer khác cập nhật version | Thông báo nội dung đã thay đổi, yêu cầu refresh thay vì ghi đè |
-| Scoring | Timeout sau Save / Finalize | Hiện trạng thái chưa rõ, GET lại ScoreSheet; hiển thị version/current status |
-| Scoring | Bài bị UNDER_INVESTIGATION | Chặn thao tác tiếp nếu BE xác nhận trạng thái không hợp lệ |
-| Publication | Tie chưa được giải quyết | Không cho nút Publish hoạt động, hiển thị lý do bị chặn |
-| AI Review | AI unavailable hoặc false-positive | Hiển thị trạng thái `Chờ kiểm tra thủ công`, không kết luận gian lận |
-| Archive | Evidence private | Không render link trực tiếp; API phải kiểm quyền kể cả khi user biết URL |
-
-**BE là nguồn sự thật**: disable nút FE chỉ giúp UX, không thay thế xác thực/authorization. Mỗi màn hình có `loading / empty / success / validation error / permission error / conflict / server error / retrying` states theo khả năng.
-
-Reference: [State Machines](../Docs/03-domain/state-transitions.md), [Business Decision Tables](../Docs/03-domain/business-decision-tables.md), [Recovery](../Docs/05-quality/failure-recovery-matrix.md).
+Happy: người nộp thấy mã bài và trạng thái sau BE xác nhận.
+Unhappy: mất phản hồi sau bấm Gửi → hiện chưa rõ kết quả, đọc lại trạng thái trước gửi tiếp; không tạo key mới tùy tiện.
+Actual UI/E2E: NOT RUN. Chưa có screenshots sản phẩm thật hoặc URL chạy; không dùng ảnh mẫu nhóm khác làm bằng chứng.

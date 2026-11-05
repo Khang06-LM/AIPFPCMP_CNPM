@@ -1,148 +1,66 @@
-# Backend (BE) — Technical Contract & Implementation Guide
+# BE — Tài liệu thiết kế và hướng dẫn triển khai backend
 
-> **Trạng thái:** Bản mô tả Backend đề xuất, không có mã nguồn Backend đính kèm trong gói tài liệu này. **Nguồn:** [P] dự kiến Node.js Express **hoặc** ASP.NET Core, PostgreSQL, JWT/RBAC, Cloud Storage; chưa được nhóm chốt stack cuối.
+> **ID:** BE-00 · **Phiên bản:** thiết kế chi tiết 05/11/2026 · **Trạng thái: DRAFT / REVIEW REQUIRED**.
+> **Chủ trì:** Bùi Đức Hưng · **Review:** Lê Minh Khang; các owner FE/AI.
+> Đây là tài liệu thiết kế, chưa phải mã nguồn/API/màn hình đã chạy. [G] là yêu cầu đề tài; [P] là lựa chọn trong kế hoạch; [D] là thiết kế đề xuất; TBD là quyết định chưa chốt. Tên file, route, schema, status và cơ chế kỹ thuật dưới đây thuộc [D] nếu không ghi khác.
 
-## 1. Trách nhiệm BE
+**Backend (BE)** là phần máy chủ nhận yêu cầu từ giao diện, kiểm tra quyền và quy tắc, xử lý dữ liệu rồi trả kết quả. Thư mục này hiện chứa tài liệu; chưa có source backend chạy được hoặc kết quả kiểm thử ứng dụng.
 
-- Xác thực JWT, 4 role, quyền owner và assignment; không tin role/user/time từ client.
-- Nguồn dữ liệu chuẩn cho Contest, Enrollment, Roll, Frame, Submission, Validation, Review, Judge, Score, Ranking, Archive.
-- Lưu metadata trong PostgreSQL, binary trong object storage; link file private có hạn.
-- Kết nối AI async có retry và fallback; AI flags không tự đưa bài sang REJECTED.
-- Audit các quyết định nhạy cảm, chống thao tác trùng (upload finalize, review, score finalize, publish).
+## 1. Đọc file nào để làm việc gì?
 
-## 2. Stack dự kiến
-
-| Lớp | Lựa chọn trong kế hoạch | Quyết định |
+| File hiện có sau cập nhật này | Nội dung cần đọc | Liên hệ Sprint 4–5 |
 |---|---|---|
-| Runtime/API | Node.js/Express hoặc ASP.NET Core | **TBD D-11** |
-| Database | PostgreSQL | Đề xuất [P] |
-| Auth | JWT + RBAC | [G] |
-| File storage | Firebase Storage / Azure Blob | TBD |
-| API docs | OpenAPI/Swagger | [P] |
-| AI | Python service / API | [P] |
+| [01 — Kiến trúc và trách nhiệm file](01-architecture-and-files.md) | Mô-đun, phân lớp, từng loại file và trình tự xây dựng | GC-45, GC-46, GC-48..51 |
+| [02 — Hợp đồng API](02-api-contract.md) | Route, request/response, quyền, lỗi, định danh và contract thống nhất cho FE | GC-53; GC-56 |
+| [03 — Dữ liệu và vòng đời](03-data-and-lifecycle.md) | Entity, metadata, upload/nộp bài, review/chấm/công bố, transaction, version | GC-47; GC-56 |
+| [04 — Bảo mật và phân quyền](04-security-and-permissions.md) | JWT, RBAC, owner/contest/assignment scope, media và secrets | GC-39, GC-48; GC-60, GC-67 |
+| [05 — AI và báo cáo](05-ai-and-reporting.md) | Bốn năng lực AI, contract tích hợp, lỗi và cách đánh giá | GC-42, GC-51, GC-54; GC-59, GC-68 |
+| [06 — Kiểm thử và vận hành](06-testing-and-operation.md) | Kế hoạch test, cấu hình, bằng chứng chạy, deploy và phục hồi | GC-64..71 |
 
-**Không chạy lệnh cài đặt dưới đây như thể dự án đã có source**; chỉ áp dụng sau khi TV2 chốt tech stack và khởi tạo BE. Đừng báo thầy “deploy xong” nếu chưa có URL chạy được.
+Mã Jira dẫn tới dự án [GC](https://0703032147khang.atlassian.net/browse/GC-37). Các mã nhiệm vụ là công việc đã lập; không biểu thị đã hoàn thành.
 
-## 3. Phân lớp module đề xuất
+## 2. Trách nhiệm của backend
 
-```text
-BE/
-├── README.md
-├── src/
-│   ├── auth/            # login, RBAC, owner checks
-│   ├── contests/        # contests, categories, criteria
-│   ├── enrollments/     # đăng ký dự thi
-│   ├── film/            # roll, frame, metadata
-│   ├── submissions/     # upload finalize, validation
-│   ├── reviews/         # manual decision, audit
-│   ├── judging/         # assignment, score, ranking
-│   ├── archive/         # public result / media policy
-│   └── ai/              # jobs, status, predictions
-├── migrations/          # sau khi đã chốt ERD
-└── tests/               # unit/integration/API security
-```
+- Là nguồn quyết định quyền, thời gian ghi nhận nộp, trạng thái và kết quả nghiệp vụ; không tin user_id/role/điểm tổng do trình duyệt tự cung cấp.
+- Phục vụ đủ Admin, Organizer, Judge, Participant; 5 luồng cấu hình → nộp bài → thẩm định → chấm → công bố/lưu trữ.
+- Quản lý metadata và quan hệ FilmRoll → FilmFrame → Submission; ảnh nằm ở dịch vụ lưu tệp, dữ liệu quan hệ lưu trong CSDL.
+- Tích hợp phát hiện trùng/tương đồng, cảnh báo ảnh có dấu hiệu AI, gắn nhãn/phân loại, phân tích/báo cáo.
+- Giữ riêng kết quả máy, quyết định con người, điểm từng giám khảo và kết quả công bố.
+- Phục vụ quản trị, danh mục, portfolio và theo dõi hồ sơ; thông báo/audit chi tiết là phần cần xác nhận theo nguồn FR-18.
 
-## 4. Endpoint contract — sơ bộ, CHƯA PHẢI API đã triển khai
+## 3. Công nghệ: có căn cứ nào?
 
-| Method | Path (đề xuất) | Auth | FR | State / lỗi nổi bật |
-|---|---|---|---|---|
-| POST | `/auth/login` | Public | FR-01 | 401 sai credential, không lộ user existence |
-| GET | `/auth/me` | Any authenticated | FR-01 | 401 hết phiên |
-| POST | `/contests` | Organizer | FR-03 | 422 invalid deadline, 403 role |
-| POST | `/contests/{id}/enrollments` | Participant | FR-04 | 409 duplicate, 422 closed |
-| POST | `/film-rolls` | Participant | FR-05 | 422 invalid ISO |
-| POST | `/film-rolls/{id}/frames` | Roll owner | FR-05 | 409 duplicate frame; 403 not owner |
-| POST | `/uploads/init` | Participant | FR-06 | private upload object key, limit TBD |
-| POST | `/submissions` | Participant | FR-06 | 422 invalid frame/deadline, 409 duplicate |
-| GET | `/submissions/{id}/validation-report` | Owner/Organizer | FR-07 | rule-level pass/fail/error |
-| POST | `/submissions/{id}/review` | Organizer scoped | FR-08 | 409 stale version, 422 missing reject reason |
-| POST | `/judge-assignments` | Organizer scoped | FR-09 | 422 invalid judge/round |
-| PUT | `/judge/scoresheets/{id}` | Assigned Judge | FR-10 | 422 invalid score, 403 not assigned |
-| POST | `/judge/scoresheets/{id}/finalize` | Assigned Judge | FR-10 | 409 finalized, 422 incomplete |
-| POST | `/contests/{id}/publish-results` | Organizer | FR-11 | 409 missing scores/tie-break |
-| GET | `/archive` | Public | FR-12 | public fields only |
-| GET | `/organizer/contests/{id}/analytics` | Organizer scoped | FR-16 | 403 other contest |
+| Nội dung | Căn cứ và trạng thái |
+|---|---|
+| JWT + RBAC; Cloud Object Storage; thiết kế mô-đun | [G] mục 3.2.d |
+| ASP.NET Core Web API hoặc Node.js/Express | [P]/bảng công nghệ đề xuất; chưa chọn, D-11 |
+| PostgreSQL hoặc MySQL | Đề tài đề xuất lựa chọn; PostgreSQL trong bộ thiết kế repo chưa phải quyết định cuối |
+| Firebase Storage hoặc Azure Blob | Đề xuất; nhà cung cấp/chính sách truy cập chưa chốt |
+| OpenAPI/Swagger, worker/queue, Python service | Thiết kế tích hợp đề xuất; không đồng nghĩa bắt buộc dùng mọi công cụ |
+| Thời hạn token, kích thước ảnh, công thức điểm, số vòng/giám khảo | TBD; không đặt giá trị mặc định thay thể lệ |
 
-### JSON response mẫu (đề xuất)
+Chỉ khởi tạo **một** backend sau khi chọn stack; không viết song song hai hệ thống Express và ASP.NET. Không tự dùng công nghệ của báo cáo mẫu nha khoa.
 
-```json
-{
-  "data": {"id": "<uuid>", "status": "SUBMITTED"},
-  "meta": {"requestId": "<trace-id>"}
-}
-```
+## 4. Quy ước dùng bộ tài liệu
 
-```json
-{
-  "error": {"code": "SUBMISSION_CLOSED", "message": "Cuộc thi đã hết hạn nhận bài", "field": null},
-  "meta": {"requestId": "<trace-id>"}
-}
-```
+Hợp đồng ở [02](02-api-contract.md) là **một bản dự thảo thống nhất** cho FE–BE; thay đổi cần review cả hai phía. Danh sách endpoint không phải danh sách API đã deploy. Các trạng thái tiếp tục là đề xuất ở [State Transitions](../Docs/03-domain/state-transitions.md); quyết định nghiệp vụ chưa chốt không được biến thành luật trong code.
 
-## 5. Quy định validation/transaction
+Phần tên source trong tài liệu 01 chỉ hướng dẫn **sẽ tạo file gì**. Không có thư mục src, migration hoặc command build giả được thêm vào lần cập nhật này.
 
-- Không chấp nhận datetime từ FE thay cho `submitted_at` do BE ghi.
-- `Submission` chỉ tạo sau upload hoàn tất; nếu storage thành công nhưng DB fail phải dọn object mồ côi theo cơ chế đã chọn.
-- `approve/reject`, `finalize score`, `publish` cần optimistic locking/version để hai người không ghi đè.
-- `Criterion` đổi sau khi có ScoreSheet cần version hoặc bị khóa.
-- Chỉ `Approved` submission được phân cho Judge; chỉ `Finalized` ScoreSheet đi vào ranking.
-- Public archive trả metadata whitelist; không trả âm bản hoặc signed URL evidence private.
-- AI job timeout ghi `PENDING/ERROR`, không tự loại bài.
+## 5. Khi bắt đầu hiện thực
 
-## 6. Environment variables — chỉ liệt kê tên, KHÔNG CHỨA SECRET
+1. Chốt các blocker ở [Decision Log](../Docs/01-governance/open-questions.md).
+2. Review FR/Entity/State/AC, chọn stack và phiên bản; cập nhật contract rồi mới migration.
+3. Tạo source và môi trường cấu hình; triển khai từng luồng có kiểm tra quyền.
+4. Mỗi PR liên kết Jira/FR, có reviewer và kiểm tra phù hợp; ghi actual/evidence.
+5. Thêm lệnh install/run/build/test **đã thử thật**, API docs URL và staging URL khi có; hiện chưa có các giá trị này.
 
-```dotenv
-DATABASE_URL=<set-locally>
-JWT_SECRET=<set-locally>
-OBJECT_STORAGE_BUCKET=<set-locally>
-OBJECT_STORAGE_CREDENTIALS=<set-locally>
-AI_SERVICE_URL=<set-locally>
-```
+## 6. Nguồn và truy vết
 
-Dùng `.env.example` chứa placeholder. Không commit `.env`, JSON service credentials, token, secret; nếu lộ phải rotate, không chỉ xóa commit.
+[FR-01..18](../Docs/02-requirements/README.md) · [Entity Catalogue](../Docs/03-domain/entities.md) · [Data Dictionary](../Docs/03-domain/data-dictionary.md) · [Business Invariants](../Docs/03-domain/business-invariants.md) · [Failure Recovery](../Docs/05-quality/failure-recovery-matrix.md) · [FE](../FE/README.md).
 
-## 7. Hướng dẫn chạy sau khi có source
+## 7. Ví dụ nghiệm thu thiết kế
 
-1. TV2 xác nhận stack và cập nhật README này với **lệnh chính xác** thực sự đã thử trên máy sạch.
-2. Tạo database/migrations/seed riêng; document cách cấu hình cloud và quyền bucket.
-3. Chạy unit, integration, API security test; lưu log kết quả trên PR/Jira.
-4. Tạo OpenAPI và khóa contract để FE/AI có thể mock.
-5. Chỉ tuyên bố staging OK khi có URL và test smoke đạt.
-
-## 8. Bằng chứng phải bổ sung khi code xong
-
-`Node/.NET runtime version`, lệnh setup/run/test, env sample, migration version, API docs URL, staging URL, commit/tag, test PASS/FAIL, known issues.
-
-[FR Index](../Docs/02-requirements/README.md) · [Entity & Data Dictionary](../Docs/03-domain/data-dictionary.md) · [Test Strategy](../Docs/05-quality/test-strategy.md)
-
-## V3 — Backend business integrity / API error contract (đề xuất, chưa có code)
-
-**Không coi endpoint ví dụ là đã triển khai.** Tech Lead phải chốt stack Express/ASP.NET theo D-11 và gắn Swagger thật khi có.
-
-### Luồng finalize bài nộp (FR-06)
-
-1. `POST /uploads/init` → upload_session_id + signed upload URL có hạn (optional design).
-2. Storage upload → `POST /uploads/complete` → asset READY sau kiểm MIME/checksum/size.
-3. `POST /submissions` với `Idempotency-Key` → BE kiểm JWT/owner/enrollment/contest clock/quota/file READY tại transaction.
-4. `GET /me/submissions/{id}` hoặc query theo request-key → FE reconcile lost response.
-5. Cleanup job xử lý asset không liên kết; không tự tính file tạm là bài đã nộp.
-
-### Chuẩn lỗi JSON đề xuất
-
-```json
-{
-  "error": {
-    "code": "CONTEST_CLOSED",
-    "message": "Cuộc thi đã hết thời hạn nhận bài.",
-    "correlation_id": "request-trace-id",
-    "details": []
-  }
-}
-```
-
-- `401` chưa xác thực, `403` không đủ quyền, `404` ẩn tài nguyên không có quyền xem, `409` state/version conflict, `422` business validation, `5xx` lỗi dependency.
-- Không đưa stack trace, secret, URL âm bản riêng tư hoặc PII vào response và audit log.
-- `ScoreSheet` cần `version` optimistic lock, finalize có idempotency; publication cần immutable snapshot.
-- Nếu dịch vụ AI timeout, không tự reject bài; dùng AIJob + manual review fallback theo [Decision Log](../Docs/01-governance/open-questions.md).
-
-**Chuẩn kiểm thử bắt buộc:** [Business Tests](../Docs/05-quality/business-scenario-tests.md), [Failure Matrix](../Docs/05-quality/failure-recovery-matrix.md), [Invariants](../Docs/03-domain/business-invariants.md).
+- Thành công: một Participant nộp bản scan gắn frame thuộc cuộn của mình; bản thiết kế chỉ ra API, kiểm quyền, transaction và dữ liệu trả về.
+- Ngoại lệ: thay frame_id bằng frame của người khác; BE phải từ chối theo contract mà không tạo bài hoặc lộ thông tin riêng.
+- Trạng thái kiểm tra ứng dụng: **NOT RUN**. Reviewer còn phải xác nhận khả năng hiện thực và các TBD.
